@@ -17,6 +17,10 @@
  *
  */
 
+#ifndef _WIN32
+#define _GNU_SOURCE  // Enable strdup and other GNU extensions on Linux
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +50,7 @@
   #include <unistd.h>
   #include <termios.h>
   #include <limits.h>
+  #include <strings.h>  // For strcasecmp
   #include <readline/readline.h>
   #include <readline/history.h>
   #include <dirent.h>
