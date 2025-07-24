@@ -1,0 +1,213 @@
+# Compiled binaries
+gcli
+gcommit
+gcmd
+gemini-cli
+*.exe
+
+# Object files
+*.o
+*.obj
+
+# Debug symbols
+*.dSYM/
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+tmp_*
+temp_*
+
+# Build artifacts
+*.a
+*.so
+*.dylib
+*.dll
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Configuration files (may contain API keys)
+config.json
+.env
+.env.local
+.env.production
+
+# Session files
+sessions/
+*.session
+
+# History files
+history.txt
+.history
+
+# Log files
+*.log
+logs/
+
+# Coverage reports
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# Package manager files
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Archive files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# Test outputs
+test_output/
+test_results/
+
+# Documentation build
+docs/_build/
+site/
+
+# Custom prompts (may contain sensitive info)
+*-prompt.txt
+custom-*.txt
+
+# Local development
+local/
+dev/
+scratch/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+
+# Eclipse
+.project
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+!Makefile
+
+# Autotools
+/autom4te.cache
+/aclocal.m4
+/compile
+/configure
+/depcomp
+/install-sh
+/missing
+/stamp-h1
+config.log
+config.status
+
+# pkg-config
+*.pc
+
+# Valgrind
+*.memcheck
+*.helgrind
+*.drd
+*.massif
+
+# Static analysis
+*.scan-build/
+cppcheck-results.xml
+
+# Profiling
+gmon.out
+*.prof
+
+# Core dumps
+core
+core.*
+vgcore.*
+
+# Sanitizer outputs
+*.asan
+*.tsan
+*.msan
+*.ubsan
+
+docs/
