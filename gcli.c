@@ -451,6 +451,9 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
             else if (state.api_key[0] != '\0') fprintf(stderr,"API Key loaded from configuration file.\n");
             if (origin_from_env) fprintf(stderr,"Origin loaded from environment variable: %s\n", state.origin);
         }
+        
+        // Display session info
+        fprintf(stderr, "--- Session: %s\n\n", state.current_session_name);
     }
 
     // --- 6. Initial Prompt Execution ---
@@ -475,8 +478,13 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
             free_pending_attachments(&state);
             free(current_turn_parts);
 
-            if (interactive) printf("\n");
-
+            // Display initial prompt in compact gcmd style
+            if (interactive) {
+                printf("\033[1;36m◇  User:\033[0m %s\n", initial_prompt_buffer);
+                printf("\033[1;36m◆  AI\033[0m\n");
+                printf("└  ");
+                fflush(stdout);
+            }
 
             if (state.free_mode) {
                 // Handle initial prompt in free mode
@@ -484,9 +492,12 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
                     free(state.last_free_response_part);
                     state.last_free_response_part = NULL;
                 }
-                if (interactive) printf("\n");
                 bool success = send_free_api_request(&state, initial_prompt_buffer);
-                if (interactive) printf("\n");
+                
+                // End AI response formatting
+                if (interactive) {
+                    printf("\n\n");
+                }
 
                 if (success) {
                     // The user prompt is already in history, now add the model response
@@ -505,7 +516,7 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
                 // Original logic for the official API
                 char* model_response_text = NULL;
                 if (send_api_request(&state, &model_response_text)) {
-                    if (interactive) printf("\n");
+                    if (interactive) printf("\n\n");
                     if (state.last_model_response) free(state.last_model_response);
                     state.last_model_response = model_response_text;
 
@@ -533,17 +544,13 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
 
     if (interactive) {
         char* line;
-        char prompt_buffer[16384];
 
         while (1) {
-            // Display the prompt, e.g., "([unsaved])>: "
-            snprintf(prompt_buffer, sizeof(prompt_buffer), "\n(%s)>: ", state.current_session_name);
-
             #ifdef _WIN32
-                line = linenoise(prompt_buffer);
+                line = linenoise("\033[1;36m◇  User:\033[0m ");
                 if (line == NULL) break; // EOF on Windows (Ctrl+Z, Enter)
             #else
-                line = readline(prompt_buffer);
+                line = readline("\033[1;36m◇  User:\033[0m ");
                 if (line == NULL) { // EOF on POSIX (Ctrl+D)
                     printf("\n");
                     break;
@@ -1018,6 +1025,12 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
             }
 
             // The input is a prompt. Process it based on whether we are in free mode or not.
+            
+            // Display AI response header (user prompt already shown by readline)
+            printf("\033[1;36m◆  AI\033[0m\n");
+            printf("└  ");
+            fflush(stdout);
+            
             if (state.free_mode) {
                 // Logic for handling prompts in free mode.
                 size_t current_turn_len = 0;
@@ -1061,13 +1074,12 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
                 free_pending_attachments(&state);
                 strcat(current_turn_prompt, p);
 
-                printf("\n");
                 if(state.last_free_response_part) {
                     free(state.last_free_response_part);
                     state.last_free_response_part = NULL;
                 }
                 bool success = send_free_api_request(&state, current_turn_prompt);
-                printf("\n");
+                printf("\n\n");
                 if (success) {
                     Part user_part = { .type = PART_TYPE_TEXT, .text = current_turn_prompt };
                     add_content_to_history(&state.history, "user", &user_part, 1);
@@ -1103,11 +1115,9 @@ void generate_session(int argc, char* argv[], bool interactive, bool is_stdin_a_
                 free_pending_attachments(&state);
                 free(current_turn_parts);
 
-                printf("\n");
-
                 char* model_response_text = NULL;
                 if (send_api_request(&state, &model_response_text)) {
-                    printf("\n");
+                    printf("\n\n");
                     if (state.last_model_response) free(state.last_model_response);
                     state.last_model_response = model_response_text;
 
@@ -2388,6 +2398,7 @@ int parse_common_options(int argc, char* argv[], AppState* state) {
             if (build_session_path(argv[i + 1], file_path, sizeof(file_path))) {
                 load_history_from_file(state, file_path);
                 strncpy(state->current_session_name, argv[i + 1], sizeof(state->current_session_name) - 1);
+                state->current_session_name[sizeof(state->current_session_name) - 1] = '\0';
             }
             i++;
         } else if ((STRCASECMP(argv[i], "-h") == 0 || STRCASECMP(argv[i], "--help") == 0)) {
