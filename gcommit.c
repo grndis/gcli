@@ -1,3 +1,7 @@
+#ifndef _WIN32
+#define _GNU_SOURCE  // Enable strdup and other GNU extensions on Linux
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
