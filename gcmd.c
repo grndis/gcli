@@ -45,18 +45,17 @@ void print_usage(const char* program_name) {
     printf("    -g, --gcli PATH         Path to gcli binary (default: gcli)\n");
     printf("    -s, --shell SHELL       Target shell (bash, zsh, fish, etc.)\n");
     printf("    -e, --execute           Execute the command immediately (use with caution)\n");
-    printf("    -c, --copy              Copy command to clipboard (macOS/Linux) [DEFAULT]\n");
     printf("    -q, --quiet             Only output the command, no prompts\n");
     printf("    -v, --verbose           Show the prompt being sent to AI\n");
     printf("    --dry-run               Show what would be executed without running\n");
     printf("    -h, --help              Show this help message\n\n");
     printf("EXAMPLES:\n");
-    printf("    %s \"list all files here\"                    # Generate and copy: ls -la\n", program_name);
-    printf("    %s \"find files larger than 100MB\"          # Generate and copy: find . -size +100M\n", program_name);
-    printf("    %s \"show disk usage\"                        # Generate and copy: df -h\n", program_name);
+    printf("    %s \"list all files here\"                    # Generate command: ls -la\n", program_name);
+    printf("    %s \"find files larger than 100MB\"          # Generate command: find . -size +100M\n", program_name);
+    printf("    %s \"show disk usage\"                        # Generate command: df -h\n", program_name);
     printf("    %s -e \"check running processes\"             # Generate and execute immediately\n", program_name);
-    printf("    %s -q \"compress this directory\"             # Generate and output only (no copy)\n", program_name);
-    printf("    %s -s fish \"list files by size\"            # Generate fish shell command and copy\n\n", program_name);
+    printf("    %s -q \"compress this directory\"             # Generate and output only (quiet mode)\n", program_name);
+    printf("    %s -s fish \"list files by size\"            # Generate fish shell command\n\n", program_name);
     printf("SAFETY:\n");
     printf("    - Commands are shown before execution\n");
     printf("    - Dangerous commands require confirmation\n");
@@ -156,35 +155,34 @@ int prompt_user_action(const char* command) {
 }
 
 int copy_to_clipboard(const char* command) {
+    // Check if we're in a headless environment (no DISPLAY variable)
+    if (getenv("DISPLAY") == NULL && getenv("WAYLAND_DISPLAY") == NULL) {
+        // Headless environment - don't attempt clipboard operations
+        return 2; // Special return code for headless (means "skip clipboard")
+    }
+
     char copy_cmd[MAX_COMMAND_SIZE + 100];
 
 #ifdef __APPLE__
     snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | pbcopy", command);
 #elif __linux__
-    // Try xclip first, then xsel
+    // GUI environment - try xclip first, then xsel
     if (system("which xclip > /dev/null 2>&1") == 0) {
-        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xclip -selection clipboard", command);
+        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xclip -selection clipboard 2>/dev/null", command);
     } else if (system("which xsel > /dev/null 2>&1") == 0) {
-        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xsel --clipboard --input", command);
+        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xsel --clipboard --input 2>/dev/null", command);
     } else {
-        printf("Error: No clipboard utility found (install xclip or xsel)\n");
-        return 1;
+        return 1; // No clipboard utility found
     }
 #else
-    printf("Error: Clipboard copy not supported on this platform\n");
-    return 1;
+    return 1; // Platform not supported
 #endif
 
     int result = system(copy_cmd);
-    if (WEXITSTATUS(result) == 0) {
-        return 0;
-    } else {
-        printf("Failed to copy to clipboard\n");
-        return 1;
-    }
+    return (WEXITSTATUS(result) == 0) ? 0 : 1;
 }
 
-void display_command_result(const char* generated_output, int copy_success) {
+void display_command_result(const char* generated_output, int copy_result) {
     // Parse the command|||description format
     char* output_copy = strdup(generated_output);
     char* command = output_copy;
@@ -229,14 +227,27 @@ void display_command_result(const char* generated_output, int copy_success) {
     printf("│\n");
     printf("│  %s\n", description ? description : "Generated shell command");
     printf("│\n");
-    printf("\033[1;36m◆  Command copied to clipboard:\033[0m\n");
+    
+    // Handle different copy results
+    if (copy_result == 0) {
+        // Successfully copied to clipboard
+        printf("\033[1;36m◆  Command copied to clipboard:\033[0m\n");
+    } else if (copy_result == 2) {
+        // Headless environment - just show the command
+        printf("\033[1;36m◆  Generated command:\033[0m\n");
+    } else {
+        // Failed to copy
+        printf("\033[1;36m◆  Generated command:\033[0m\n");
+    }
+    
     printf("│\n");
     printf("└  %s\n", command);
     
-    if (!copy_success) {
-        printf("\n\033[1;36m◆  Failed to copy to clipboard:\033[0m\n");
+    // Only show error message for actual clipboard failures (not headless)
+    if (copy_result == 1) {
+        printf("\n\033[1;36m◆  Note:\033[0m\n");
         printf("│\n");
-        printf("└  Command is shown above\n");
+        printf("└  Failed to copy to clipboard (no clipboard utility found)\n");
     }
     
     free(output_copy);
@@ -643,7 +654,7 @@ int main(int argc, char* argv[]) {
 
         case 2:  // Copy
             result = copy_to_clipboard(command_only);
-            display_command_result(generated_command, result == 0);
+            display_command_result(generated_command, result);
             break;
 
         case 3: { // Show only
