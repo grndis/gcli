@@ -13,21 +13,22 @@
 // Default prompt for shell command generation
 static const char* DEFAULT_PROMPT =
     "You are an expert system administrator and shell command generator. "
-    "Convert the following natural language request into a precise shell command. "
+    "Convert the following natural language request into a precise shell command with description. "
     "Rules: "
-    "1. Return ONLY the shell command, no explanation or formatting "
-    "2. Use standard POSIX commands when possible "
-    "3. Prefer safe, commonly available commands "
-    "4. For complex tasks, provide a single command or pipeline "
-    "5. Do not include dangerous commands like 'rm -rf /' or 'dd' without explicit safety "
-    "6. If the request is unclear, provide the most reasonable interpretation "
-    "7. Do not use markdown formatting, backticks, or code blocks "
-    "8. Return just the raw command that can be executed directly "
+    "1. Return EXACTLY in this format: COMMAND|||DESCRIPTION "
+    "2. COMMAND: The shell command only, no explanation or formatting "
+    "3. DESCRIPTION: A clear explanation of what the command does "
+    "4. Use standard POSIX commands when possible "
+    "5. Prefer safe, commonly available commands "
+    "6. For complex tasks, provide a single command or pipeline "
+    "7. Do not include dangerous commands like 'rm -rf /' or 'dd' without explicit safety "
+    "8. If the request is unclear, provide the most reasonable interpretation "
+    "9. Do not use markdown formatting, backticks, or code blocks "
     "Examples: "
-    "'list all files' -> 'ls -la' "
-    "'find large files' -> 'find . -type f -size +100M -ls' "
-    "'check disk usage' -> 'df -h' "
-    "'show running processes' -> 'ps aux' "
+    "'list all files' -> 'ls -la|||Lists all files and directories with detailed information including hidden files' "
+    "'find large files' -> 'find . -type f -size +100M -ls|||Searches for all files larger than 100MB in the current directory and subdirectories' "
+    "'check disk usage' -> 'df -h|||Displays disk space usage in human-readable format for all mounted filesystems' "
+    "'show running processes' -> 'ps aux|||Shows all running processes with detailed information including user, CPU, and memory usage' "
     "Convert this request: ";
 
 void print_usage(const char* program_name) {
@@ -98,59 +99,56 @@ int is_dangerous_command(const char* command) {
         "fdisk",
         "parted",
         ":(){ :|:& };:",  // fork bomb
-        "chmod -R 777 /",
-        "chown -R",
-        "> /dev/sd",
-        "shred",
-        "wipefs",
+        "chmod 777 /",
+        "chown root /",
+        "> /dev/sda",
+        "format c:",
+        "del /s /q c:\\",
         NULL
     };
 
-    for (int i = 0; dangerous_patterns[i]; i++) {
-        if (strstr(command, dangerous_patterns[i])) {
+    for (int i = 0; dangerous_patterns[i] != NULL; i++) {
+        if (strstr(command, dangerous_patterns[i]) != NULL) {
             return 1;
         }
     }
-
     return 0;
 }
 
-int confirm_execution(const char* command) {
-    printf("\n🔍 Generated command: \033[1;36m%s\033[0m\n", command);
-
-    if (is_dangerous_command(command)) {
-        printf("\n⚠️  \033[1;31mWARNING: This command may be dangerous!\033[0m\n");
-        printf("Please review carefully before proceeding.\n");
+int confirm_dangerous_command(const char* command) {
+    printf("WARNING: This command may be dangerous:\n");
+    printf("Command: %s\n", command);
+    printf("Do you want to continue? (y/N): ");
+    
+    char response[10];
+    if (fgets(response, sizeof(response), stdin) != NULL) {
+        if (response[0] == 'y' || response[0] == 'Y') {
+            return 1;  // Continue
+        }
     }
+    return 0;  // Don't continue
+}
 
-    printf("\nOptions:\n");
-    printf("  [e] Execute the command\n");
-    printf("  [c] Copy to clipboard\n");
-    printf("  [s] Show command only\n");
-    printf("  [q] Quit\n");
-    printf("\nChoice [s]: ");
-
-    char choice[10];
-    if (!fgets(choice, sizeof(choice), stdin)) {
-        return 0;
+int prompt_user_action(const char* command) {
+    printf("Generated command: %s\n", command);
+    printf("What would you like to do?\n");
+    printf("1. Execute the command\n");
+    printf("2. Copy to clipboard\n");
+    printf("3. Show command only\n");
+    printf("4. Quit\n");
+    printf("Enter your choice (1-4): ");
+    
+    char input[10];
+    if (fgets(input, sizeof(input), stdin) != NULL) {
+        int choice = atoi(input);
+        switch (choice) {
+            case 1: return 1;  // Execute
+            case 2: return 2;  // Copy
+            case 3: return 3;  // Show only
+            default: return 0;  // Quit
+        }
     }
-
-    switch (choice[0]) {
-        case 'e':
-        case 'E':
-            return 1;  // Execute
-        case 'c':
-        case 'C':
-            return 2;  // Copy
-        case 's':
-        case 'S':
-        case '\n':
-            return 3;  // Show only
-        case 'q':
-        case 'Q':
-        default:
-            return 0;  // Quit
-    }
+    return 0;  // Quit
 }
 
 int copy_to_clipboard(const char* command) {
@@ -175,12 +173,69 @@ int copy_to_clipboard(const char* command) {
 
     int result = system(copy_cmd);
     if (WEXITSTATUS(result) == 0) {
-        printf("✅ Command copied to clipboard: %s\n", command);
         return 0;
     } else {
-        printf("❌ Failed to copy to clipboard\n");
+        printf("Failed to copy to clipboard\n");
         return 1;
     }
+}
+
+void display_command_result(const char* generated_output, int copy_success) {
+    // Parse the command|||description format
+    char* output_copy = strdup(generated_output);
+    char* command = output_copy;
+    char* description = NULL;
+    
+    // Look for the separator
+    char* separator = strstr(output_copy, "|||");
+    if (separator) {
+        *separator = '\0';
+        description = separator + 3;
+        
+        // Trim whitespace from command
+        while (*command == ' ' || *command == '\t' || *command == '\n') command++;
+        char* end = command + strlen(command) - 1;
+        while (end > command && (*end == ' ' || *end == '\t' || *end == '\n')) {
+            *end = '\0';
+            end--;
+        }
+        
+        // Trim whitespace from description
+        while (*description == ' ' || *description == '\t' || *description == '\n') description++;
+        end = description + strlen(description) - 1;
+        while (end > description && (*end == ' ' || *end == '\t' || *end == '\n')) {
+            *end = '\0';
+            end--;
+        }
+    } else {
+        // Fallback if no separator found
+        description = "Generated shell command";
+        
+        // Trim whitespace from command
+        while (*command == ' ' || *command == '\t' || *command == '\n') command++;
+        char* end = command + strlen(command) - 1;
+        while (end > command && (*end == ' ' || *end == '\t' || *end == '\n')) {
+            *end = '\0';
+            end--;
+        }
+    }
+    
+    // Display in tree format
+    printf("\033[1;36m◇  Command for:\033[0m\n");
+    printf("│\n");
+    printf("│  %s\n", description ? description : "Generated shell command");
+    printf("│\n");
+    printf("\033[1;36m◆  Command copied to clipboard:\033[0m\n");
+    printf("│\n");
+    printf("└  %s\n", command);
+    
+    if (!copy_success) {
+        printf("\n\033[1;36m◆  Failed to copy to clipboard:\033[0m\n");
+        printf("│\n");
+        printf("└  Command is shown above\n");
+    }
+    
+    free(output_copy);
 }
 
 char* generate_command(const char* natural_language, const char* gcli_path, const char* model,
@@ -414,11 +469,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (!quiet) {
-        printf("🤖 Generating shell command for: \"%s\"\n", natural_language);
-        if (shell) {
-            printf("🐚 Target shell: %s\n", shell);
-        }
+    if (!quiet && shell) {
+        printf("Target shell: %s\n", shell);
         printf("\n");
     }
 
@@ -435,14 +487,82 @@ int main(int argc, char* argv[]) {
 
     // Handle different output modes
     if (quiet) {
-        printf("%s\n", generated_command);
-        free(generated_command);
-        return 0;
+        // Parse the command from the generated output for quiet mode
+        char* output_copy = strdup(generated_command);
+        char* command_only = output_copy;
+        char* separator = strstr(output_copy, "|||");
+        if (separator) {
+            *separator = '\0';
+            // Trim whitespace from command
+            while (*command_only == ' ' || *command_only == '\t' || *command_only == '\n') command_only++;
+            char* end = command_only + strlen(command_only) - 1;
+            while (end > command_only && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                *end = '\0';
+                end--;
+            }
+        }
+        
+        if (execute) {
+            // Execute silently and only show command output
+            int result = system(command_only);
+            free(output_copy);
+            free(generated_command);
+            return WEXITSTATUS(result);
+        } else {
+            // Just show the command
+            printf("%s\n", command_only);
+            free(output_copy);
+            free(generated_command);
+            return 0;
+        }
     }
 
     if (dry_run) {
-        printf("🔍 Generated command: \033[1;36m%s\033[0m\n", generated_command);
-        printf("(Dry run mode - command not executed)\n");
+        // Parse the command from the generated output for dry run display
+        char* output_copy = strdup(generated_command);
+        char* command_only = output_copy;
+        char* description = NULL;
+        char* separator = strstr(output_copy, "|||");
+        if (separator) {
+            *separator = '\0';
+            description = separator + 3;
+            
+            // Trim whitespace from command
+            while (*command_only == ' ' || *command_only == '\t' || *command_only == '\n') command_only++;
+            char* end = command_only + strlen(command_only) - 1;
+            while (end > command_only && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                *end = '\0';
+                end--;
+            }
+            
+            // Trim whitespace from description
+            while (*description == ' ' || *description == '\t' || *description == '\n') description++;
+            end = description + strlen(description) - 1;
+            while (end > description && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                *end = '\0';
+                end--;
+            }
+        } else {
+            description = "Generated shell command";
+            // Trim whitespace from command
+            while (*command_only == ' ' || *command_only == '\t' || *command_only == '\n') command_only++;
+            char* end = command_only + strlen(command_only) - 1;
+            while (end > command_only && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                *end = '\0';
+                end--;
+            }
+        }
+        
+        // Display in tree format for dry run
+        printf("\033[1;36m◇  Command for:\033[0m\n");
+        printf("│\n");
+        printf("│  %s\n", description ? description : "Generated shell command");
+        printf("│\n");
+        printf("\033[1;36m◆  Dry run - command not executed:\033[0m\n");
+        printf("│\n");
+        printf("└  %s\n", command_only);
+        
+        free(output_copy);
         free(generated_command);
         return 0;
     }
@@ -464,29 +584,103 @@ int main(int argc, char* argv[]) {
 
     int result = 0;
 
+    // Parse the command from the generated output for execution/copying
+    char* output_copy = strdup(generated_command);
+    char* command_only = output_copy;
+    char* separator = strstr(output_copy, "|||");
+    if (separator) {
+        *separator = '\0';
+        // Trim whitespace from command
+        while (*command_only == ' ' || *command_only == '\t' || *command_only == '\n') command_only++;
+        char* end = command_only + strlen(command_only) - 1;
+        while (end > command_only && (*end == ' ' || *end == '\t' || *end == '\n')) {
+            *end = '\0';
+            end--;
+        }
+    }
+
     switch (action) {
-        case 1:  // Execute
-            printf("\n🚀 Executing: \033[1;36m%s\033[0m\n\n", generated_command);
-            result = system(generated_command);
-            if (WEXITSTATUS(result) != 0) {
-                printf("\n❌ Command failed with exit code %d\n", WEXITSTATUS(result));
+        case 1: { // Execute
+            // Parse and display command description, then execute
+            char* exec_copy = strdup(generated_command);
+            char* exec_description = NULL;
+            char* exec_separator = strstr(exec_copy, "|||");
+            if (exec_separator) {
+                *exec_separator = '\0';
+                exec_description = exec_separator + 3;
+                
+                // Trim whitespace from description
+                while (*exec_description == ' ' || *exec_description == '\t' || *exec_description == '\n') exec_description++;
+                char* end = exec_description + strlen(exec_description) - 1;
+                while (end > exec_description && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                    *end = '\0';
+                    end--;
+                }
+            } else {
+                exec_description = "Generated shell command";
             }
+            
+            printf("\033[1;36m◇  Command for:\033[0m\n");
+            printf("│\n");
+            printf("│  %s\n", exec_description ? exec_description : "Generated shell command");
+            printf("│\n");
+            printf("\033[1;36m◆  Executing command:\033[0m\n");
+            printf("│\n");
+            printf("└  %s\n\n", command_only);
+            
+            result = system(command_only);
+            if (WEXITSTATUS(result) != 0) {
+                printf("Command failed with exit code %d\n", WEXITSTATUS(result));
+            }
+            
+            free(exec_copy);
             break;
+        }
 
         case 2:  // Copy
-            result = copy_to_clipboard(generated_command);
+            result = copy_to_clipboard(command_only);
+            display_command_result(generated_command, result == 0);
             break;
 
-        case 3:  // Show only
-            printf("\n📋 Generated command: \033[1;36m%s\033[0m\n", generated_command);
-            printf("(Use -e to execute or -c to copy)\n");
+        case 3: { // Show only
+            // Parse and display in tree format
+            char* desc_copy = strdup(generated_command);
+            char* desc_description = NULL;
+            char* desc_separator = strstr(desc_copy, "|||");
+            if (desc_separator) {
+                *desc_separator = '\0';
+                desc_description = desc_separator + 3;
+                
+                // Trim whitespace from description
+                while (*desc_description == ' ' || *desc_description == '\t' || *desc_description == '\n') desc_description++;
+                char* end = desc_description + strlen(desc_description) - 1;
+                while (end > desc_description && (*end == ' ' || *end == '\t' || *end == '\n')) {
+                    *end = '\0';
+                    end--;
+                }
+            } else {
+                desc_description = "Generated shell command";
+            }
+            
+            printf("\033[1;36m◇  Command for:\033[0m\n");
+            printf("│\n");
+            printf("│  %s\n", desc_description ? desc_description : "Generated shell command");
+            printf("│\n");
+            printf("\033[1;36m◆  Generated command:\033[0m\n");
+            printf("│\n");
+            printf("└  %s\n", command_only);
+            printf("\n(Use -e to execute or -c to copy)\n");
+            
+            free(desc_copy);
             break;
+        }
 
         default:  // Quit
             printf("Operation cancelled.\n");
             break;
     }
 
+    free(output_copy);
     free(generated_command);
     return result;
 }
