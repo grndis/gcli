@@ -155,6 +155,34 @@ int prompt_user_action(const char* command) {
 }
 
 int copy_to_clipboard(const char* command) {
+#ifdef __APPLE__
+    // On macOS, we don't need to check for DISPLAY since pbcopy always works
+    char copy_cmd[MAX_COMMAND_SIZE + 100];
+    
+    // Escape single quotes in the command for shell safety
+    char escaped_command[MAX_COMMAND_SIZE * 2];
+    const char* src = command;
+    char* dst = escaped_command;
+    
+    while (*src && (dst - escaped_command) < (int)sizeof(escaped_command) - 5) {
+        if (*src == '\'') {
+            // Replace single quote with '\''
+            *dst++ = '\'';
+            *dst++ = '\\';
+            *dst++ = '\'';
+            *dst++ = '\'';
+        } else {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
+    
+    snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | pbcopy", escaped_command);
+    int result = system(copy_cmd);
+    return (WEXITSTATUS(result) == 0) ? 0 : 1;
+    
+#elif __linux__
     // Check if we're in a headless environment (no DISPLAY variable)
     if (getenv("DISPLAY") == NULL && getenv("WAYLAND_DISPLAY") == NULL) {
         // Headless environment - don't attempt clipboard operations
@@ -162,24 +190,41 @@ int copy_to_clipboard(const char* command) {
     }
 
     char copy_cmd[MAX_COMMAND_SIZE + 100];
+    
+    // Escape single quotes in the command for shell safety
+    char escaped_command[MAX_COMMAND_SIZE * 2];
+    const char* src = command;
+    char* dst = escaped_command;
+    
+    while (*src && (dst - escaped_command) < (int)sizeof(escaped_command) - 5) {
+        if (*src == '\'') {
+            // Replace single quote with '\''
+            *dst++ = '\'';
+            *dst++ = '\\';
+            *dst++ = '\'';
+            *dst++ = '\'';
+        } else {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
 
-#ifdef __APPLE__
-    snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | pbcopy", command);
-#elif __linux__
     // GUI environment - try xclip first, then xsel
     if (system("which xclip > /dev/null 2>&1") == 0) {
-        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xclip -selection clipboard 2>/dev/null", command);
+        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xclip -selection clipboard 2>/dev/null", escaped_command);
     } else if (system("which xsel > /dev/null 2>&1") == 0) {
-        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xsel --clipboard --input 2>/dev/null", command);
+        snprintf(copy_cmd, sizeof(copy_cmd), "echo '%s' | xsel --clipboard --input 2>/dev/null", escaped_command);
     } else {
         return 1; // No clipboard utility found
     }
-#else
-    return 1; // Platform not supported
-#endif
 
     int result = system(copy_cmd);
     return (WEXITSTATUS(result) == 0) ? 0 : 1;
+    
+#else
+    return 1; // Platform not supported
+#endif
 }
 
 void display_command_result(const char* generated_output, int copy_result) {
